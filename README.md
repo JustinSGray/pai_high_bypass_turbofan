@@ -38,7 +38,7 @@ If you choose to follow the standard engine modeling convention, then mass-flow 
 The CFD would take an input (from the propulsion model) of mass-flow. 
 It would then internally iterate to find a static pressure at the out-flow condition that matches that mass flow. 
 Then the CFD can output (to the propulsion model) mass-averaged velocity, area, and the static pressure value that was iterated on to converge mass-flow. 
-(Note related to the AD: this means that the implicit relationship in that boundary condition needs to be included as an additional state variable in the adjoint in SU2)
+(Note related to the derivatives: this means that the implicit relationship in that boundary condition needs to be included as an additional state variable in the adjoint CFD adjoint)
 
 ### Use static pressure as a coupling variable
 A standard subsonic outflow condition in CFD can output (to the propulsion model) mass-flow, area, and mass-averaged velocity. 
