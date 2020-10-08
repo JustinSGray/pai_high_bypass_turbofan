@@ -22,9 +22,12 @@ class HBTF(pyc.Cycle):
         design = self.options['design']
         
         #Add subsystems to build the engine deck:
-        self.pyc_add_element('fc', pyc.FlightConditions(thermo_data=thermo_spec, elements=pyc.AIR_MIX))
-        self.pyc_add_element('inlet', pyc.Inlet(design=design, thermo_data=thermo_spec, elements=pyc.AIR_MIX))
-        
+        if design: 
+            self.pyc_add_element('fc', pyc.FlightConditions(thermo_data=thermo_spec, elements=pyc.AIR_MIX))
+            self.pyc_add_element('inlet', pyc.Inlet(design=design, thermo_data=thermo_spec, elements=pyc.AIR_MIX))
+        else: 
+            self.pyc_add_element('cfd_start', pyc.CFDStart(thermo_data=thermo_spec, elements=pyc.AIR_MIX))
+
         # Note variable promotion for the fan -- 
         # the LP spool speed and the fan speed are INPUTS that are promoted:
         # Note here that promotion aliases are used. Here Nmech is being aliased to LP_Nmech
@@ -63,10 +66,17 @@ class HBTF(pyc.Cycle):
         # Now use the explicit connect method to make connections -- connect(<from>, <to>)
         
         #Connect the inputs to perf group
-        self.connect('inlet.Fl_O:tot:P', 'perf.Pt2')
+        if design: 
+            self.connect('inlet.Fl_O:tot:P', 'perf.Pt2')
+            self.connect('inlet.F_ram', 'perf.ram_drag')
+        else: 
+            self.connect('cfd_start.Fl_O:tot:P', 'perf.Pt2')
+            # no ram drag in off-design, cause CFD-start doesn't compute it
+
         self.connect('hpc.Fl_O:tot:P', 'perf.Pt3')
         self.connect('burner.Wfuel', 'perf.Wfuel_0')
-        self.connect('inlet.F_ram', 'perf.ram_drag')
+
+
         self.connect('core_nozz.Fg', 'perf.Fg_0')
         self.connect('byp_nozz.Fg', 'perf.Fg_1')
         
@@ -78,8 +88,11 @@ class HBTF(pyc.Cycle):
         self.connect('hpc.trq', 'hp_shaft.trq_0')
         self.connect('hpt.trq', 'hp_shaft.trq_1')
         #Ideally expanding flow by conneting flight condition static pressure to nozzle exhaust pressure
-        self.connect('fc.Fl_O:stat:P', 'core_nozz.Ps_exhaust')
-        self.connect('fc.Fl_O:stat:P', 'byp_nozz.Ps_exhaust')
+        
+        if design: 
+            self.connect('fc.Fl_O:stat:P', ['core_nozz.Ps_exhaust', 'byp_nozz.Ps_exhaust'])
+        else: 
+            self.connect('cfd_start.Fl_O:stat:P', ['core_nozz.Ps_exhaust', 'byp_nozz.Ps_exhaust'])
         
         #Create a balance component
         # Balances can be a bit confusing, here's some explanation -
@@ -99,7 +112,7 @@ class HBTF(pyc.Cycle):
         if design:
             balance.add_balance('W', units='lbm/s', eq_units='lbf')
             #Here balance.W is implicit state variable that is the OUTPUT of balance object
-            self.connect('balance.W', 'inlet.Fl_I:stat:W') #Connect the output of balance to the relevant input
+            self.connect('balance.W', 'fc.W') #Connect the output of balance to the relevant input
             self.connect('perf.Fn', 'balance.lhs:W')       #This statement makes perf.Fn the LHS of the balance eqn.
             self.promotes('balance', inputs=[('rhs:W', 'Fn_DES')])
 
@@ -136,13 +149,13 @@ class HBTF(pyc.Cycle):
             #
             #           (lp_Nmech)   LP spool speed to balance shaft power on the low spool
             #           (hp_Nmech)   HP spool speed to balance shaft power on the high spool
-            balance.add_balance('FAR', val=0.017, lower=1e-4, eq_units='lbf')
+            balance.add_balance('FAR', val=0.017, lower=1e-4, eq_units='degR')
             self.connect('balance.FAR', 'burner.Fl_I:FAR')
             self.connect('burner.Fl_O:tot:T', 'balance.lhs:FAR')
             self.promotes('balance', inputs=[('rhs:FAR', 'T4_target')])
 
             balance.add_balance('W', units='lbm/s', lower=10., upper=1000., eq_units='inch**2')
-            self.connect('balance.W', 'inlet.Fl_I:stat:W')
+            self.connect('balance.W', 'cfd_start.W')
             self.connect('core_nozz.Throat:stat:area', 'balance.lhs:W')
 
             balance.add_balance('BPR', lower=2., upper=10., eq_units='inch**2')
@@ -166,8 +179,12 @@ class HBTF(pyc.Cycle):
             #                 'lpt', 'duct13', 'core_nozz', 'byp_bld', 'duct15', 'byp_nozz', 'lp_shaft', 'hp_shaft', 'perf'])
         
         # Set up all the flow connections:
-        self.pyc_connect_flow('fc.Fl_O', 'inlet.Fl_I', connect_w=False)
-        self.pyc_connect_flow('inlet.Fl_O', 'fan.Fl_I')
+        if design: 
+            self.pyc_connect_flow('fc.Fl_O', 'inlet.Fl_I')
+            self.pyc_connect_flow('inlet.Fl_O', 'fan.Fl_I')
+        else: 
+            self.pyc_connect_flow('cfd_start.Fl_O', 'fan.Fl_I')
+
         self.pyc_connect_flow('fan.Fl_O', 'splitter.Fl_I')
         self.pyc_connect_flow('splitter.Fl_O1', 'duct4.Fl_I')
         self.pyc_connect_flow('duct4.Fl_O', 'lpc.Fl_I')
@@ -294,11 +311,11 @@ class MPhbtf(pyc.MPCycle):
         self.set_input_defaults('DESIGN.duct15.MN', 0.4589)
         self.set_input_defaults('DESIGN.LP_Nmech', 4666.1, units='rpm')
         self.set_input_defaults('DESIGN.HP_Nmech', 14705.7, units='rpm')
+        self.set_input_defaults('DESIGN.inlet.ram_recovery', 0.9990)
 
         # --- Set up bleed values -----
         self.set_input_defaults('DESIGN.hpc.cust:frac_W', 0.0445),
         
-        self.pyc_add_cycle_param('inlet.ram_recovery', 0.9990)
         self.pyc_add_cycle_param('duct4.dPqP', 0.0048)
         self.pyc_add_cycle_param('duct6.dPqP', 0.0101)
         self.pyc_add_cycle_param('burner.dPqP', 0.0540)
@@ -324,24 +341,25 @@ class MPhbtf(pyc.MPCycle):
         self.pyc_add_cycle_param('lpt.cool2:frac_P', 0.0)
         self.pyc_add_cycle_param('hp_shaft.HPX', 250.0, units='hp')
 
-        self.od_pts = ['OD0', 'OD1', 'OD2', 'OD3'] 
+        self.od_pts = ['OD0', 'OD1', 'OD2'] 
 
-        self.od_MNs = [0.8, 0.8, 0.25, 0.00001]
-        self.od_alts = [35000.0, 35000.0, 0.0, 0.0]
-        self.od_T4s = [3900., 3700., 3900., 3450.]
-        self.od_dTs = [0.0, 0.0, 27.0, 27.0]
-        self.od_Ws = [0.0445, 0.0422, 0.0177, 0.0185]
+        self.od_Ps = [3.458, 3.458, 14.696]
+        self.od_V = [735.912, 735.912, 588.948]
+        self.od_area = 2688.968
+        self.od_T4s = [2900., 2700., 2900.]
+        self.od_dTs = [0.0, 0.0, 27.0]
+        self.od_Ws = [0.0445, 0.0422, 0.0177]
 
         for i, pt in enumerate(self.od_pts):
             self.pyc_add_pnt(pt, HBTF(design=False))
 
-            self.set_input_defaults(pt+'.fc.MN', self.od_MNs[i])
-            self.set_input_defaults(pt+'.fc.alt', self.od_alts[i], units='ft')
-            self.set_input_defaults(pt+'.balance.rhs:FAR', self.od_T4s[i], units='lbf')
-            self.set_input_defaults(pt+'.fc.dTs', self.od_dTs[i], units='degR')
+            self.set_input_defaults(pt+'.cfd_start.Ps', self.od_Ps[i], units='psi')
+            self.set_input_defaults(pt+'.cfd_start.V', self.od_V[i], units='ft/s')
+            self.set_input_defaults(pt+'.cfd_start.area', self.od_area, units='inch**2')
+            self.set_input_defaults(pt+'.T4_target', self.od_T4s[i], units='degR')
             self.set_input_defaults(pt+'.hpc.cust:frac_W', self.od_Ws[i])
 
-        self.pyc_use_default_des_od_conns()
+        self.pyc_use_default_des_od_conns(skip=['inlet'])
 
         #Set up the RHS of the balances!
         self.pyc_connect_des_od('core_nozz.Throat:stat:area','balance.rhs:W')
@@ -387,7 +405,7 @@ if __name__ == "__main__":
     prob['DESIGN.fc.balance.Pt'] = 5.2
     prob['DESIGN.fc.balance.Tt'] = 440.0
 
-    W_guesses = [300, 300, 700, 700]
+    W_guesses = [300, 300, 700, 600]
     for i, pt in enumerate(mp_hbtf.od_pts):
 
         # initial guesses
