@@ -256,10 +256,12 @@ def viewer(prob, pt, file=sys.stdout):
     print(" %7.5f  %7.1f %7.3f %7.1f %7.1f %7.1f %7.3f  %7.5f  %7.3f" %summary_data, file=file, flush=True)
 
 
-    fs_names = ['fc.Fl_O', 'inlet.Fl_O', 'fan.Fl_O', 'splitter.Fl_O1', 'splitter.Fl_O2',
+    fs_names = ['fan.Fl_O', 'splitter.Fl_O1', 'splitter.Fl_O2',
                 'duct4.Fl_O', 'lpc.Fl_O', 'duct6.Fl_O', 'hpc.Fl_O', 'bld3.Fl_O', 'burner.Fl_O',
                 'hpt.Fl_O', 'duct11.Fl_O', 'lpt.Fl_O', 'duct13.Fl_O', 'core_nozz.Fl_O', 'byp_bld.Fl_O',
                 'duct15.Fl_O', 'byp_nozz.Fl_O']
+
+
     fs_full_names = [f'{pt}.{fs}' for fs in fs_names]
     pyc.print_flow_station(prob, fs_full_names, file=file)
 
