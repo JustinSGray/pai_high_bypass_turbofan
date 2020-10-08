@@ -1,4 +1,4 @@
-#General Model Setup:
+# General Model Setup:
 
 pyCycle requires a "design" case to be run at some reference flight condition.
 In general, the specific condition is semi-arbitrary, but for this model a
@@ -11,7 +11,7 @@ Then the outputs are all the performance metrics of the engine (e.g. thrust, BPR
 
 You will always run ONE design point, and one or more off-design points. 
 
-#Modifications for aeropropulsive coupling
+# Modifications for aeropropulsive coupling
 
 ## Design Case
 The design case does not need to be directly coupled to CFD. 
